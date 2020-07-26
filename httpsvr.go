@@ -1,5 +1,8 @@
-// Package httpsvr supports http method, url params and
-// logs all pairs of request/response. API is similar to standard net/http
+//Package httpsvr supports a router that understand http method and url params
+//(features that standard http_ServeMux lacked).
+//This package can be configured to log all pairs of request/response by adding an
+//auto-generated requestId to the request_Context. This package also monitors
+//number of requests for each handlers, requests duration percentile.
 package httpsvr
 
 import (
@@ -17,25 +20,21 @@ import (
 	"github.com/mywrap/metric"
 )
 
-// Server must be inited by calling func NewServer.
-// Example usage in `a_examples/httpsvr/httpsvr.go`
+// Server must be inited by calling func NewServer
 type Server struct {
 	// config defines parameters for running an HTTP server,
 	// usually user should set ReadHeaderTimeout, ReadTimeout, WriteTimeout,
 	// ReadTimeout and WriteTimeout should be bigger for a file server
 	config *http.Server
-	// router is a better http_ServeMux that supports http method, url params,
-	// example: router.AddHandler("GET", "/match/:id", func(w,r))
-	router *httprouter.Router
-	// default NewServer set isEnableLog = true
-	isEnableLog bool
-	// default NewServer set isEnableMetric = true
-	isEnableMetric bool
-	Metric         metric.Metric
+	// router example usage: router.AddHandler("GET", "/match/:id", func(w,r))
+	router         *httprouter.Router
+	isEnableLog    bool          // default NewServer set isEnableLog = true
+	isEnableMetric bool          // default NewServer set isEnableMetric = true
+	Metric         metric.Metric // default is a in-memory metric
 }
 
-// NewServer returns a inited Server,
-// for more configs, use NewServerWithConf instead of this func
+// NewServer init a Server with my recommended settings.
+// For more customizable server, use NewServerWithConf instead.
 func NewServer() *Server {
 	router := httprouter.New()
 	config := NewDefaultConfig()
@@ -51,24 +50,23 @@ func NewServer() *Server {
 	return s
 }
 
-// NewServerWithConf returns a inited Server from input args.
-// This func will ignore config_Handler, you have to use Server_AddHandler
-// to define the router.
-// For simple usage, use NewServer instead of this func.
-func NewServerWithConf(config *http.Server, isEnableLog bool,
-	isEnableMetric bool, metric0 metric.Metric) *Server {
-	if isEnableMetric && metric0 == nil {
+// NewServerWithConf is used for turning off log, turning off metric
+// or providing a persistent metric instead of in-memory.
+// Usually, using simple func NewServer is enough.
+func NewServerWithConf(conf *http.Server, isLog bool,
+	hasMetric bool, metric0 metric.Metric) *Server {
+	if hasMetric && metric0 == nil {
 		metric0 = metric.NewMemoryMetric()
 	}
-	if config == nil {
-		config = NewDefaultConfig()
+	if conf == nil {
+		conf = NewDefaultConfig()
 	}
 	router := httprouter.New()
-	config.Handler = router
+	conf.Handler = router
 	s := &Server{
-		config:         config,
-		isEnableLog:    isEnableLog,
-		isEnableMetric: isEnableMetric,
+		config:         conf,
+		isEnableLog:    isLog,
+		isEnableMetric: hasMetric,
 		router:         router,
 		Metric:         metric0,
 	}
@@ -76,15 +74,16 @@ func NewServerWithConf(config *http.Server, isEnableLog bool,
 	return s
 }
 
-// AddHandler must be called before ListenAndServe,
-// ex: AddHandler("GET", "/", ExampleHandler()).
+// AddHandler defines the router. Ex: AddHandler("GET", "/", ExampleHandler()).
+// The router matches the URL of each incoming request against a list of
+// registered path/method patterns and calls the handler for the pattern.
 func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc) {
 	defer func() { // in case of adding a same handler twice
 		if r := recover(); r != nil {
 			log.Infof("error when AddHandler: %v", r)
 		}
 	}()
-	// be careful with augmenting handler, example stack overflow:
+	// be careful with augmenting handler, example of stack overflow:
 	// 	f := func() { log.Println("f called") }
 	//	f = func() { f() }
 	//	f()
@@ -124,40 +123,83 @@ func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc
 	s.router.HandlerFunc(method, path, augmented2)
 }
 
-// ListenAndServe listens on the TCP network address addr.
-// Accepted connections are configured to enable TCP keep-alives.
+// ListenAndServe listens on input TCP network address addr
 func (s *Server) ListenAndServe(addr string) error {
 	s.config.Addr = addr
 	return s.config.ListenAndServe()
 }
 
-// ListenAndServe listens on the port s_config_Addr
+// ListenAndServe listens on the port that defined in s_config_Addr
 func (s *Server) ListenAndServe2() error {
 	return s.ListenAndServe(s.config.Addr)
 }
 
-// WriteJson includes logging, input r is the corresponding request of the response
+// NewDefaultConfig is my suggestion of a http server config,
+// feel free to modified base on your circumstance
+func NewDefaultConfig() *http.Server {
+	return &http.Server{
+		ReadHeaderTimeout: 20 * time.Second,
+		ReadTimeout:       10 * time.Minute,
+		WriteTimeout:      20 * time.Minute,
+	}
+}
+
+// GetUrlParams returns URL parameters from a http request as a map,
+// ex: path `/match/:id` has param `id`
+func GetUrlParams(r *http.Request) map[string]string {
+	params := httprouter.ParamsFromContext(r.Context())
+	result := make(map[string]string, len(params))
+	if len(params) == 0 {
+		return result
+	}
+	for _, param := range params {
+		result[param.Key] = param.Value
+	}
+	return result
+}
+
+//
+// utility
+//
+
+// Write is a utility to respond body with logging
+func (s Server) Write(w http.ResponseWriter, r *http.Request, body string) (
+	int, error) {
+	w.Header().Set("Content-Type", "text/plain")
+	n, err := w.Write([]byte(body))
+	if err != nil { // will never happen
+		log.Condf(s.isEnableLog, "error WriteJson %v: %v",
+			GetRequestId(r), err)
+		return n, err
+	}
+	log.Condf(s.isEnableLog, "http write body %v: %v",
+		GetRequestId(r), body)
+	return n, nil
+}
+
+// WriteJson is a utility to respond body with logging
 func (s Server) WriteJson(w http.ResponseWriter, r *http.Request, obj interface{}) (
 	int, error) {
 	bodyB, err := json.Marshal(obj)
 	if err != nil {
-		log.Condf(s.isEnableLog, "error when http respond %v: %v",
+		log.Condf(s.isEnableLog, "error WriteJson %v: %v",
 			GetRequestId(r), err)
 		http.Error(w, err.Error(), 500)
 		return 0, err
 	}
 	w.Header().Set("Content-Type", "application/json")
 	n, err := w.Write(bodyB)
-	if err != nil {
-		log.Condf(s.isEnableLog, "error when http respond %v: %v",
+	if err != nil { // will never happen
+		log.Condf(s.isEnableLog, "error WriteJson %v: %v",
 			GetRequestId(r), err)
 		return n, err
 	}
-	log.Condf(s.isEnableLog, "http respond %v: %s", GetRequestId(r), bodyB)
+	log.Condf(s.isEnableLog, "http write body %v: %s",
+		GetRequestId(r), bodyB)
 	return n, nil
 }
 
-// ReadJson reads http request body to outPtr
+// ReadJson is a utility to parse request json body
 func (s Server) ReadJson(r *http.Request, outPtr interface{}) error {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -179,26 +221,20 @@ func (s Server) handleMetric() http.HandlerFunc {
 
 var emptyServer = &Server{isEnableLog: true}
 
-func WriteJson(w http.ResponseWriter, r *http.Request, obj interface{}) (int, error) {
+// WriteJson is a utility to respond body with logging
+func WriteJson(w http.ResponseWriter, r *http.Request, obj interface{}) (
+	int, error) {
 	return emptyServer.WriteJson(w, r, obj)
 }
 
+// ReadJson is a utility to parse request json body with logging
 func ReadJson(r *http.Request, outPtr interface{}) error {
 	return emptyServer.ReadJson(r, outPtr)
 }
 
-// GetUrlParams returns URL parameters from a http request as a map,
-// ex: path `/match/:id` has param `id`
-func GetUrlParams(r *http.Request) map[string]string {
-	params := httprouter.ParamsFromContext(r.Context())
-	result := make(map[string]string, len(params))
-	if len(params) == 0 {
-		return result
-	}
-	for _, param := range params {
-		result[param.Key] = param.Value
-	}
-	return result
+// GetRequestId returns the auto generated unique requestId
+func GetRequestId(r *http.Request) string {
+	return fmt.Sprintf("%v", r.Context().Value(CtxRequestId))
 }
 
 // ctxKeyType is used for avoiding context key conflict
@@ -206,35 +242,3 @@ type ctxKeyType string
 
 // CtxRequestId is a internal request id
 const CtxRequestId ctxKeyType = "CtxRequestId"
-
-// GetRequestId returns the auto generated unique requestId
-func GetRequestId(r *http.Request) string {
-	return fmt.Sprintf("%v", r.Context().Value(CtxRequestId))
-}
-
-func ExampleHandler() http.HandlerFunc {
-	// thing := initHandler() // one-time per-handler initialisation
-	return func(w http.ResponseWriter, r *http.Request) {
-		var request struct{ Field0 string }
-		ReadJson(r, &request)
-		GetUrlParams(r)
-		WriteJson(w, r, map[string]string{"Error": "", "Data": "PONG"})
-	}
-}
-
-func ExampleHandlerError() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// not marshallable data
-		WriteJson(w, r, map[string]interface{}{"Data": func() {}})
-	}
-}
-
-// NewDefaultConfig is my suggestion of a http server config,
-// feel free to modified base on your circumstance
-func NewDefaultConfig() *http.Server {
-	return &http.Server{
-		ReadHeaderTimeout: 20 * time.Second,
-		ReadTimeout:       10 * time.Minute,
-		WriteTimeout:      20 * time.Minute,
-	}
-}

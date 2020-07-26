@@ -11,30 +11,38 @@ import (
 	"github.com/mywrap/log"
 )
 
-type Server struct {
+type Server struct { // your server with inited database connection
 	*httpsvr.Server
+	DatabaseMock string
 }
 
 func (s *Server) Route() {
 	s.AddHandler("GET", "/", s.index())
+	s.AddHandler("POST", "/login", s.login())
 	s.AddHandler("GET", "/admin", s.auth(s.hello()))
-	s.AddHandler("GET", "/error", httpsvr.ExampleHandlerError())
 	s.AddHandler("GET", "/exception", s.exception())
 }
 
 func (s *Server) index() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.WriteJson(w, r, map[string]string{"Data": "Index page"})
+		s.Write(w, r, "Index page")
 	}
 }
 
-func (s *Server) hello() http.HandlerFunc {
+func (s *Server) login() http.HandlerFunc {
+	type LoginR struct{ Password string }
+	type LoginW struct{ UserId int }
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.WriteJson(w, r, map[string]string{
-			"Data": fmt.Sprintf("Hello %v", r.Context().Value("user")),
-		})
+		var req LoginR
+		s.ReadJson(r, &req) // parse request body to a struct
+		_ = s.DatabaseMock  // some query to check username, password
+		s.WriteJson(w, r, LoginW{UserId: 1})
 	}
 }
+
+type reqCtxKey string
+
+const authUser reqCtxKey = "user"
 
 func (s Server) auth(handle http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -48,8 +56,16 @@ func (s Server) auth(handle http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		userName := words[1]
-		ctx := context.WithValue(r.Context(), "user", userName)
+		ctx := context.WithValue(r.Context(), authUser, userName)
 		handle(w, r.WithContext(ctx))
+	}
+}
+
+func (s *Server) hello() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.WriteJson(w, r, map[string]string{
+			"Data": fmt.Sprintf("Hello %v", r.Context().Value(authUser)),
+		})
 	}
 }
 
@@ -62,15 +78,20 @@ func (s *Server) exception() http.HandlerFunc {
 }
 
 func main() {
-	s := Server{Server: httpsvr.NewServer()}
+	s := Server{
+		Server:       httpsvr.NewServer(),
+		DatabaseMock: "some database connection",
+	}
 	s.Route()
 	port := ":8000"
-	log.Infof("url0: http://127.0.0.1%v/", port)
-	log.Infof("url0: http://127.0.0.1%v/__metric", port)
-	log.Infof("url1: http://127.0.0.1%v/admin", port)
-	log.Infof("url2: http://127.0.0.1%v/error", port)
+	url0 := "http://127.0.0.1" + port
+	log.Println(url0 + "/")
+	log.Println(url0 + "/__metric")
+	log.Println(url0 + "/login")
+	log.Println(url0 + "/admin")
+	log.Println(url0 + "/exception")
 	err := s.ListenAndServe(port)
 	if err != nil {
-		log.Fatalf("error when s_ListenAndServe: %v", err)
+		log.Fatalf("error ListenAndServe: %v", err)
 	}
 }
