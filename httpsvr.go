@@ -97,32 +97,13 @@ func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc
 	if !s.isEnableMetric {
 		augmented1 = handler
 	} else {
-		metricKey := fmt.Sprintf("%v_%v", path, method)
-		augmented1 = func(w http.ResponseWriter, r *http.Request) {
-			s.Metric.Count(metricKey)
-			beginTime := time.Now()
-			handler(w, r)
-			s.Metric.Duration(metricKey, time.Since(beginTime))
-		}
+		augmented1 = s.augmentMetric(method, path, handler)
 	}
-
 	var augmented2 http.HandlerFunc
 	if !s.isEnableLog {
 		augmented2 = augmented1
 	} else {
-		augmented2 = func(w http.ResponseWriter, r *http.Request) {
-			requestId := gofast.GenUUID()
-			ctx := context.WithValue(r.Context(), CtxRequestId, requestId)
-			query := r.URL.Query().Encode()
-			if query != "" {
-				query = "?" + query
-			}
-			log.Condf(s.isEnableLog, "http request %v from %v: %v %v%v",
-				requestId, r.RemoteAddr, r.Method, r.URL.Path, query)
-			augmented1(w, r.WithContext(ctx))
-			log.Condf(s.isEnableLog, "http responded %v to %v: %v %v%v",
-				requestId, r.RemoteAddr, r.Method, r.URL.Path, query)
-		}
+		augmented2 = s.augmentLog(augmented1)
 	}
 
 	s.router.HandlerFunc(method, path, augmented2)
@@ -130,7 +111,51 @@ func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc
 
 // will be called when no matching route is found
 func (s *Server) AddHandlerNotFound(handler http.HandlerFunc) {
-	s.router.NotFound = handler
+	var augmented1 http.HandlerFunc
+	if !s.isEnableMetric {
+		augmented1 = handler
+	} else {
+		augmented1 = s.augmentMetric("", "", handler)
+	}
+	var augmented2 http.HandlerFunc
+	if !s.isEnableLog {
+		augmented2 = augmented1
+	} else {
+		augmented2 = s.augmentLog(augmented1)
+	}
+	s.router.NotFound = augmented2
+}
+
+func (s *Server) augmentMetric(method string, path string,
+	handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var metricKey string
+		if method != "" && path != "" {
+			metricKey = fmt.Sprintf("%v_%v", path, method)
+		} else {
+			metricKey = fmt.Sprintf("%v_%v", r.URL.Path, r.Method)
+		}
+		s.Metric.Count(metricKey)
+		beginTime := time.Now()
+		handler(w, r)
+		s.Metric.Duration(metricKey, time.Since(beginTime))
+	}
+}
+
+func (s *Server) augmentLog(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		requestId := gofast.GenUUID()
+		ctx := context.WithValue(r.Context(), CtxRequestId, requestId)
+		query := r.URL.Query().Encode()
+		if query != "" {
+			query = "?" + query
+		}
+		log.Condf(s.isEnableLog, "http request %v from %v: %v %v%v",
+			requestId, r.RemoteAddr, r.Method, r.URL.Path, query)
+		handler(w, r.WithContext(ctx))
+		log.Condf(s.isEnableLog, "http responded %v to %v: %v %v%v",
+			requestId, r.RemoteAddr, r.Method, r.URL.Path, query)
+	}
 }
 
 // ListenAndServe listens on input TCP network address addr

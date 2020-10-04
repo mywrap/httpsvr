@@ -21,6 +21,7 @@ func (s *Server) Route() {
 	s.AddHandler("POST", "/login", s.login())
 	s.AddHandler("GET", "/admin", s.auth(s.hello()))
 	s.AddHandler("GET", "/exception", s.exception())
+	s.AddHandlerNotFound(func(http.ResponseWriter, *http.Request) {})
 }
 
 func (s *Server) index() http.HandlerFunc {
@@ -90,6 +91,7 @@ func main() {
 	log.Println(url0 + "/login")
 	log.Println(url0 + "/admin")
 	log.Println(url0 + "/exception")
+	// curl -X POST --data '{"un": "xyz", "pw": "xyz"}' http://127.0.0.1:8000/echo
 	err := s.ListenAndServe(port)
 	if err != nil {
 		log.Fatalf("error ListenAndServe: %v", err)
