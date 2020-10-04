@@ -27,10 +27,11 @@ type Server struct {
 	// ReadTimeout and WriteTimeout should be bigger for a file server
 	config *http.Server
 	// router example usage: router.AddHandler("GET", "/match/:id", func(w,r))
-	router         *httprouter.Router
-	isEnableLog    bool          // default NewServer set isEnableLog = true
-	isEnableMetric bool          // default NewServer set isEnableMetric = true
-	Metric         metric.Metric // default is a in-memory metric
+	router             *httprouter.Router
+	isEnableLog        bool          // default NewServer set isEnableLog = true
+	isEnableMetric     bool          // default NewServer set isEnableMetric = true
+	Metric             metric.Metric // default is a in-memory metric
+	IsMetricResetDaily bool
 }
 
 // NewServer init a Server with my recommended settings.
@@ -40,11 +41,15 @@ func NewServer() *Server {
 	config := NewDefaultConfig()
 	config.Handler = router
 	s := &Server{
-		config:         config,
-		isEnableLog:    true,
-		isEnableMetric: true,
-		router:         router,
-		Metric:         metric.NewMemoryMetric(),
+		config:             config,
+		isEnableLog:        true,
+		isEnableMetric:     true,
+		router:             router,
+		Metric:             metric.NewMemoryMetric(),
+		IsMetricResetDaily: true,
+	}
+	if s.IsMetricResetDaily {
+		gofast.NewCron(s.Metric.Reset, 24*time.Hour, 0)
 	}
 	s.AddHandler("GET", "/__metric", s.handleMetric())
 	return s
