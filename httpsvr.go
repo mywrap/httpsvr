@@ -128,6 +128,11 @@ func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc
 	s.router.HandlerFunc(method, path, augmented2)
 }
 
+// will be called when no matching route is found
+func (s *Server) AddHandlerNotFound(handler http.HandlerFunc) {
+	s.router.NotFound = handler
+}
+
 // ListenAndServe listens on input TCP network address addr
 func (s *Server) ListenAndServe(addr string) error {
 	s.config.Addr = addr

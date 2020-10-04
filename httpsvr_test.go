@@ -77,3 +77,25 @@ func TestHttp(t *testing.T) {
 		}
 	}
 }
+
+func TestServer_AddHandlerNotFound(t *testing.T) {
+	s0 := NewServer()
+	w0 := httptest.NewRecorder()
+	r0 := httptest.NewRequest("GET", "/not-found", nil)
+	s0.router.ServeHTTP(w0, r0)
+	if r, e := w0.Result().StatusCode, 404; r != e {
+		t.Errorf("error AddHandlerNotFound: real %v, expected %v", r, e)
+	}
+
+	s1 := NewServer()
+	s1.AddHandlerNotFound(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("ok"))
+	})
+	w1 := httptest.NewRecorder()
+	r1 := httptest.NewRequest("POST", "/not-found", nil)
+	s1.router.ServeHTTP(w1, r1)
+	if r, e := w1.Result().StatusCode, 200; r != e {
+		t.Errorf("error AddHandlerNotFound: real %v, expected %v", r, e)
+	}
+}
