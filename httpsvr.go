@@ -203,7 +203,7 @@ func (s Server) Write(w http.ResponseWriter, r *http.Request, body string) (
 	w.Header().Set("Content-Type", "text/plain")
 	n, err := w.Write([]byte(body))
 	if err != nil { // will never happen
-		log.Condf(s.isEnableLog, "error WriteJson %v: %v",
+		log.Condf(s.isEnableLog, "error Write %v: %v",
 			GetRequestId(r), err)
 		return n, err
 	}
@@ -255,6 +255,12 @@ func (s Server) handleMetric() http.HandlerFunc {
 }
 
 var emptyServer = &Server{isEnableLog: true}
+
+// Write is a utility to respond body with logging
+func Write(w http.ResponseWriter, r *http.Request, body string) (
+	int, error) {
+	return emptyServer.Write(w, r, body)
+}
 
 // WriteJson is a utility to respond body with logging
 func WriteJson(w http.ResponseWriter, r *http.Request, obj interface{}) (
