@@ -69,11 +69,15 @@ func NewServerWithConf(conf *http.Server, isLog bool,
 	router := httprouter.New()
 	conf.Handler = router
 	s := &Server{
-		config:         conf,
-		isEnableLog:    isLog,
-		isEnableMetric: hasMetric,
-		router:         router,
-		Metric:         metric0,
+		config:             conf,
+		isEnableLog:        isLog,
+		isEnableMetric:     hasMetric,
+		router:             router,
+		Metric:             metric0,
+		IsMetricResetDaily: true,
+	}
+	if s.isEnableMetric && s.IsMetricResetDaily {
+		gofast.NewCron(s.Metric.Reset, 24*time.Hour, 0)
 	}
 	s.AddHandler("GET", "/__metric", s.handleMetric())
 	return s
