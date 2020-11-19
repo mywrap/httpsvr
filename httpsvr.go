@@ -173,6 +173,12 @@ func (s *Server) ListenAndServe2() error {
 	return s.ListenAndServe(s.config.Addr)
 }
 
+// ListenAndServe listens on the port that defined in s_config_Addr
+func (s *Server) ListenAndServeTLS(addr string, certFile, keyFile string) error {
+	s.config.Addr = addr
+	return s.config.ListenAndServeTLS(certFile, keyFile)
+}
+
 // NewDefaultConfig is my suggestion of a http server config,
 // feel free to modified base on your circumstance
 func NewDefaultConfig() *http.Server {

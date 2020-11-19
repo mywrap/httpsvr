@@ -99,3 +99,14 @@ func TestServer_AddHandlerNotFound(t *testing.T) {
 		t.Errorf("error AddHandlerNotFound: real %v, expected %v", r, e)
 	}
 }
+
+func _TestServer_ListenAndServeTLS(t *testing.T) {
+	s0 := NewServer()
+	t.Logf("about to ListenAndServeTLS")
+	err := s0.ListenAndServeTLS(":8000",
+		`/home/tungdt/docker/deploy_building_contractors/client_react/xaydungcong_com.crt`,
+		//`/home/tungdt/docker/deploy_building_contractors/client_react/xaydungcong_com.key`,
+		`/home/tungdt/go/src/github.com/daominah/hello_go/crypto_try/myorg0.key`,
+	)
+	t.Fatal(err)
+}
