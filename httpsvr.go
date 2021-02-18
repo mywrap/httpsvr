@@ -26,8 +26,8 @@ type Server struct {
 	// usually user should set ReadHeaderTimeout, ReadTimeout, WriteTimeout,
 	// ReadTimeout and WriteTimeout should be bigger for a file server
 	config *http.Server
-	// router example usage: router.AddHandler("GET", "/match/:id", func(w,r))
-	router             *httprouter.Router
+	// should not access this Router directly
+	Router             *httprouter.Router
 	isEnableLog        bool          // default NewServer set isEnableLog = true
 	isEnableMetric     bool          // default NewServer set isEnableMetric = true
 	Metric             metric.Metric // default is a in-memory metric
@@ -44,7 +44,7 @@ func NewServer() *Server {
 		config:             config,
 		isEnableLog:        true,
 		isEnableMetric:     true,
-		router:             router,
+		Router:             router,
 		Metric:             metric.NewMemoryMetric(),
 		IsMetricResetDaily: true,
 	}
@@ -72,7 +72,7 @@ func NewServerWithConf(conf *http.Server, isLog bool,
 		config:             conf,
 		isEnableLog:        isLog,
 		isEnableMetric:     hasMetric,
-		router:             router,
+		Router:             router,
 		Metric:             metric0,
 		IsMetricResetDaily: true,
 	}
@@ -110,7 +110,7 @@ func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc
 		augmented2 = s.augmentLog(augmented1)
 	}
 
-	s.router.HandlerFunc(method, path, augmented2)
+	s.Router.HandlerFunc(method, path, augmented2)
 }
 
 // will be called when no matching route is found
@@ -127,7 +127,7 @@ func (s *Server) AddHandlerNotFound(handler http.HandlerFunc) {
 	} else {
 		augmented2 = s.augmentLog(augmented1)
 	}
-	s.router.NotFound = augmented2
+	s.Router.NotFound = augmented2
 }
 
 func (s *Server) augmentMetric(method string, path string,

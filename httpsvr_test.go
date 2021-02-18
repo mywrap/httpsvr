@@ -24,7 +24,7 @@ func TestHttp(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", "/",
 			strings.NewReader(`{"path":"PING"}`))
-		handler := s.router
+		handler := s.Router
 		handler.ServeHTTP(w, r)
 		resBody, _ := ioutil.ReadAll(w.Result().Body)
 		if string(resBody) != "PONG" {
@@ -82,7 +82,7 @@ func TestServer_AddHandlerNotFound(t *testing.T) {
 	s0 := NewServer()
 	w0 := httptest.NewRecorder()
 	r0 := httptest.NewRequest("GET", "/not-found", nil)
-	s0.router.ServeHTTP(w0, r0)
+	s0.Router.ServeHTTP(w0, r0)
 	if r, e := w0.Result().StatusCode, 404; r != e {
 		t.Errorf("error AddHandlerNotFound: real %v, expected %v", r, e)
 	}
@@ -94,7 +94,7 @@ func TestServer_AddHandlerNotFound(t *testing.T) {
 	})
 	w1 := httptest.NewRecorder()
 	r1 := httptest.NewRequest("POST", "/not-found", nil)
-	s1.router.ServeHTTP(w1, r1)
+	s1.Router.ServeHTTP(w1, r1)
 	if r, e := w1.Result().StatusCode, 200; r != e {
 		t.Errorf("error AddHandlerNotFound: real %v, expected %v", r, e)
 	}
