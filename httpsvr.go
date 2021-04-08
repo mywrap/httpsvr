@@ -26,7 +26,8 @@ type Server struct {
 	// usually user should set ReadHeaderTimeout, ReadTimeout, WriteTimeout,
 	// ReadTimeout and WriteTimeout should be bigger for a file server
 	config *http.Server
-	// should not access this Router directly
+	// should not access this Router directly,
+	// but sometimes we need to access this Router, example ServeFiles
 	Router             *httprouter.Router
 	isEnableLog        bool          // default NewServer set isEnableLog = true
 	isEnableMetric     bool          // default NewServer set isEnableMetric = true
