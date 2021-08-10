@@ -13,32 +13,31 @@ import (
 
 type Server struct { // your server with inited database connection
 	*httpsvr.Server
-	DatabaseMock string
+	DatabaseMock     string
+	allowCORSOrigins map[string]bool // map key is scheme://host:port
 }
 
 func (s *Server) Route() {
-	s.AddHandler("GET", "/", s.index())
-	s.AddHandler("POST", "/login", s.login())
-	s.AddHandler("GET", "/admin", s.auth(s.hello()))
-	s.AddHandler("GET", "/exception", s.exception())
+	s.AddHandler("GET", "/", s.index)
+	s.AddHandler("OPTIONS", "/login", s.preHandle(
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	s.AddHandler("POST", "/login", s.login)
+	s.AddHandler("GET", "/admin", s.auth(s.hello))
+	s.AddHandler("GET", "/exception", s.exception)
 	s.AddHandlerNotFound(func(http.ResponseWriter, *http.Request) {})
 }
 
-func (s *Server) index() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s.Write(w, r, "Index page")
-	}
+func (s *Server) index(w http.ResponseWriter, r *http.Request) {
+	s.Write(w, r, "Index page")
 }
 
-func (s *Server) login() http.HandlerFunc {
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	type LoginR struct{ Password string }
 	type LoginW struct{ UserId int }
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req LoginR
-		s.ReadJson(r, &req) // parse request body to a struct
-		_ = s.DatabaseMock  // some query to check username, password
-		s.WriteJson(w, r, LoginW{UserId: 1})
-	}
+	var req LoginR
+	s.ReadJson(r, &req) // parse request body to a struct
+	_ = s.DatabaseMock  // some query to check username, password
+	s.WriteJson(w, r, LoginW{UserId: 1})
 }
 
 type reqCtxKey string
@@ -62,19 +61,42 @@ func (s Server) auth(handle http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *Server) hello() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s.WriteJson(w, r, map[string]string{
-			"Data": fmt.Sprintf("Hello %v", r.Context().Value(authUser)),
-		})
-	}
+func (s *Server) hello(w http.ResponseWriter, r *http.Request) {
+	s.WriteJson(w, r, map[string]string{
+		"Data": fmt.Sprintf("Hello %v", r.Context().Value(authUser)),
+	})
 }
 
-func (s *Server) exception() http.HandlerFunc {
+func (s *Server) exception(w http.ResponseWriter, r *http.Request) {
+	var b *float64
+	a := 1 / *b
+	s.WriteJson(w, r, map[string]float64{"a": a})
+}
+
+// allow CORS
+func (s *Server) preHandle(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var b *float64
-		a := 1 / *b
-		s.WriteJson(w, r, map[string]float64{"a": a})
+		origin := r.Header.Get("Origin")
+		//log.Debugf("request origin: %v, path: %v", origin, r.URL.Path)
+		if _, found := s.allowCORSOrigins[origin]; !found {
+			if origin != "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("unexpected origin"))
+				return
+			} else {
+				handler(w, r)
+				return
+			}
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "*")
+		// header Authorization must be listed explicitly
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+		w.Header().Add("Access-Control-Allow-Headers", "*")
+
+		handler(w, r)
 	}
 }
 
@@ -82,6 +104,10 @@ func main() {
 	s := Server{
 		Server:       httpsvr.NewServer(),
 		DatabaseMock: "some database connection",
+		allowCORSOrigins: map[string]bool{
+			"http://localhost:3000": true, // ReactJS app
+			"http://127.0.0.1:8000": true, // this server, just for testing OPTIONS request
+		},
 	}
 	s.Route()
 	port := ":8000"

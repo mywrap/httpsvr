@@ -12,7 +12,7 @@ import (
 func TestHttp(t *testing.T) {
 	for _, s := range []*Server{
 		NewServer(),
-		NewServerWithConf(nil, false, false, nil),
+		NewServerWithConf(nil, false, nil),
 	} {
 		s.AddHandler("GET", "/",
 			func(w http.ResponseWriter, r *http.Request) {

@@ -28,11 +28,10 @@ type Server struct {
 	config *http.Server
 	// should not access this Router directly,
 	// but sometimes we need to access this Router, example ServeFiles
-	Router             *httprouter.Router
-	isEnableLog        bool          // default NewServer set isEnableLog = true
-	isEnableMetric     bool          // default NewServer set isEnableMetric = true
-	Metric             metric.Metric // default is a in-memory metric
-	IsMetricResetDaily bool
+	Router         *httprouter.Router
+	isEnableLog    bool          // default NewServer set isEnableLog = true
+	isEnableMetric bool          // default NewServer set isEnableMetric = true
+	Metric         metric.Metric // default is a in-memory metric, reset daily
 }
 
 // NewServer init a Server with my recommended settings.
@@ -42,45 +41,33 @@ func NewServer() *Server {
 	config := NewDefaultConfig()
 	config.Handler = router
 	s := &Server{
-		config:             config,
-		isEnableLog:        true,
-		isEnableMetric:     true,
-		Router:             router,
-		Metric:             metric.NewMemoryMetric(),
-		IsMetricResetDaily: true,
+		config:         config,
+		isEnableLog:    true,
+		isEnableMetric: true,
+		Router:         router,
+		Metric:         metric.NewMemoryMetric(),
 	}
-	if s.IsMetricResetDaily {
-		gofast.NewCron(s.Metric.Reset, 24*time.Hour, 0)
-	}
-	s.AddHandler("GET", "/__metric", s.handleMetric())
+	gofast.NewCron(s.Metric.Reset, 24*time.Hour, 0)
+	s.AddHandler("GET", "/__metric", s.HandleMetric())
 	return s
 }
 
 // NewServerWithConf is used for turning off log, turning off metric
 // or providing a persistent metric instead of in-memory.
 // Usually, using simple func NewServer is enough.
-func NewServerWithConf(conf *http.Server, isLog bool,
-	hasMetric bool, metric0 metric.Metric) *Server {
-	if hasMetric && metric0 == nil {
-		metric0 = metric.NewMemoryMetric()
-	}
+func NewServerWithConf(conf *http.Server, isLog bool, metric0 metric.Metric) *Server {
 	if conf == nil {
 		conf = NewDefaultConfig()
 	}
 	router := httprouter.New()
 	conf.Handler = router
 	s := &Server{
-		config:             conf,
-		isEnableLog:        isLog,
-		isEnableMetric:     hasMetric,
-		Router:             router,
-		Metric:             metric0,
-		IsMetricResetDaily: true,
+		config:         conf,
+		isEnableLog:    isLog,
+		isEnableMetric: !gofast.CheckNilInterface(metric0),
+		Router:         router,
+		Metric:         metric0,
 	}
-	if s.isEnableMetric && s.IsMetricResetDaily {
-		gofast.NewCron(s.Metric.Reset, 24*time.Hour, 0)
-	}
-	s.AddHandler("GET", "/__metric", s.handleMetric())
 	return s
 }
 
@@ -149,7 +136,7 @@ func (s *Server) augmentMetric(method string, path string,
 
 func (s *Server) augmentLog(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		requestId := gofast.GenUUID()
+		requestId := gofast.UUIDGenNoHyphen()
 		ctx := context.WithValue(r.Context(), CtxRequestId, requestId)
 		query := r.URL.Query().Encode()
 		if query != "" {
@@ -256,7 +243,7 @@ func (s Server) ReadJson(r *http.Request, outPtr interface{}) error {
 	return err
 }
 
-func (s Server) handleMetric() http.HandlerFunc {
+func (s Server) HandleMetric() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		currentMetric := s.Metric.GetCurrentMetric()
 		sort.Sort(metric.SortByAveDur(currentMetric))
