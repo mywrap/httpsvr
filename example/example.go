@@ -11,7 +11,8 @@ import (
 	"github.com/mywrap/log"
 )
 
-type Server struct { // your server with inited database connection
+type Server struct {
+	// your server with inited database connection
 	*httpsvr.Server
 	DatabaseMock     string
 	allowCORSOrigins map[string]bool // map key is scheme://host:port
@@ -19,8 +20,7 @@ type Server struct { // your server with inited database connection
 
 func (s *Server) Route() {
 	s.AddHandler("GET", "/", s.index)
-	s.AddHandler("OPTIONS", "/login", s.preHandle(
-		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	s.AddHandler("OPTIONS", "/login", s.allowCORS(emptyHandler))
 	s.AddHandler("POST", "/login", s.login)
 	s.AddHandler("GET", "/admin", s.auth(s.hello))
 	s.AddHandler("GET", "/exception", s.exception)
@@ -73,31 +73,30 @@ func (s *Server) exception(w http.ResponseWriter, r *http.Request) {
 	s.WriteJson(w, r, map[string]float64{"a": a})
 }
 
-// allow CORS
-func (s *Server) preHandle(handler http.HandlerFunc) http.HandlerFunc {
+func (s *Server) allowCORS(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		//log.Debugf("request origin: %v, path: %v", origin, r.URL.Path)
 		if _, found := s.allowCORSOrigins[origin]; !found {
-			if origin != "" {
+			if origin != "" { // normal user uses a normal browser
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte("unexpected origin"))
 				return
-			} else {
+			} else { // probably a developer is debugging
 				handler(w, r)
 				return
 			}
 		}
-
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "*")
-		// header Authorization must be listed explicitly
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization")
 		w.Header().Add("Access-Control-Allow-Headers", "*")
-
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization") // header Authorization must be listed explicitly
 		handler(w, r)
 	}
+}
+
+func emptyHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func main() {
