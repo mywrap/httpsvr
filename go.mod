@@ -5,6 +5,6 @@ go 1.14
 require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/mywrap/gofast v0.1.5
-	github.com/mywrap/log v0.1.6
+	github.com/mywrap/log v0.1.8
 	github.com/mywrap/metric v0.1.2
 )
