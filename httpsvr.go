@@ -198,7 +198,6 @@ func GetUrlParams(r *http.Request) map[string]string {
 // Write is a utility to respond body with logging
 func (s Server) Write(w http.ResponseWriter, r *http.Request, body string) (
 	int, error) {
-	w.Header().Set("Content-Type", "text/plain")
 	n, err := w.Write([]byte(body))
 	if err != nil { // will never happen
 		log.Condf(s.isEnableLog, "error Write %v: %v",
@@ -220,7 +219,6 @@ func (s Server) WriteJson(w http.ResponseWriter, r *http.Request, obj interface{
 		http.Error(w, err.Error(), 500)
 		return 0, err
 	}
-	w.Header().Set("Content-Type", "application/json")
 	n, err := w.Write(bodyB)
 	if err != nil { // will never happen
 		log.Condf(s.isEnableLog, "error WriteJson %v: %v",
