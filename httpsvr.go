@@ -1,8 +1,8 @@
-//Package httpsvr supports a router that understand http method and url params
-//(features that standard http_ServeMux lacked).
-//This package can be configured to log all pairs of request/response by adding an
-//auto-generated requestId to the request_Context. This package also monitors
-//number of requests for each handlers, requests duration percentile.
+// Package httpsvr supports a router that understand http method and url params
+// (features that standard http_ServeMux lacked).
+// This package can be configured to log all pairs of request/response by adding an
+// auto-generated requestId to the request_Context. This package also monitors
+// number of requests for each handler, requests duration percentile.
 package httpsvr
 
 import (
@@ -26,12 +26,13 @@ type Server struct {
 	// usually user should set ReadHeaderTimeout, ReadTimeout, WriteTimeout,
 	// ReadTimeout and WriteTimeout should be bigger for a file server
 	config *http.Server
-	// should not access this Router directly,
-	// but sometimes we need to access this Router, example ServeFiles
+	// func Server.AddHandler is usually enough to declare routing rules,
+	// but sometimes we need to call Server.Router.ServeHTTP in test code or
+	// Server.Router.ServeFiles
 	Router         *httprouter.Router
-	isEnableLog    bool          // default NewServer set isEnableLog = true
+	isEnableLog    bool          // default NewServer set isEnableLog = true, should be disabled if performance is an issue
 	isEnableMetric bool          // default NewServer set isEnableMetric = true
-	Metric         metric.Metric // default is a in-memory metric, reset daily
+	Metric         metric.Metric // default is an in-memory metric, reset daily
 }
 
 // NewServer init a Server with my recommended settings.
@@ -101,7 +102,8 @@ func (s *Server) AddHandler(method string, path string, handler http.HandlerFunc
 	s.Router.HandlerFunc(method, path, augmented2)
 }
 
-// will be called when no matching route is found
+// AddHandlerNotFound will be called when no matching route is found,
+// example usage: the server echos every request to the client regardless of path or method
 func (s *Server) AddHandlerNotFound(handler http.HandlerFunc) {
 	var augmented1 http.HandlerFunc
 	if !s.isEnableMetric {
@@ -156,12 +158,12 @@ func (s *Server) ListenAndServe(addr string) error {
 	return s.config.ListenAndServe()
 }
 
-// ListenAndServe listens on the port that defined in s_config_Addr
+// ListenAndServe2 listens on the port that defined in the Server.config.Addr
 func (s *Server) ListenAndServe2() error {
 	return s.ListenAndServe(s.config.Addr)
 }
 
-// ListenAndServe listens on the port that defined in s_config_Addr
+// ListenAndServeTLS listens on the port that defined in the Server.config.Addr
 func (s *Server) ListenAndServeTLS(addr string, certFile, keyFile string) error {
 	s.config.Addr = addr
 	return s.config.ListenAndServeTLS(certFile, keyFile)
@@ -171,7 +173,7 @@ func (s *Server) ListenAndServeTLS(addr string, certFile, keyFile string) error 
 // feel free to modified base on your circumstance
 func NewDefaultConfig() *http.Server {
 	return &http.Server{
-		ReadHeaderTimeout: 20 * time.Second,
+		ReadHeaderTimeout: 60 * time.Second,
 		ReadTimeout:       10 * time.Minute,
 		WriteTimeout:      20 * time.Minute,
 	}
@@ -196,7 +198,7 @@ func GetUrlParams(r *http.Request) map[string]string {
 //
 
 // Write is a utility to respond body with logging
-func (s Server) Write(w http.ResponseWriter, r *http.Request, body string) (
+func (s *Server) Write(w http.ResponseWriter, r *http.Request, body string) (
 	int, error) {
 	n, err := w.Write([]byte(body))
 	if err != nil { // will never happen
@@ -210,7 +212,7 @@ func (s Server) Write(w http.ResponseWriter, r *http.Request, body string) (
 }
 
 // WriteJson is a utility to respond body with logging
-func (s Server) WriteJson(w http.ResponseWriter, r *http.Request, obj interface{}) (
+func (s *Server) WriteJson(w http.ResponseWriter, r *http.Request, obj interface{}) (
 	int, error) {
 	bodyB, err := json.Marshal(obj)
 	if err != nil {
@@ -231,7 +233,7 @@ func (s Server) WriteJson(w http.ResponseWriter, r *http.Request, obj interface{
 }
 
 // ReadJson is a utility to parse request json body
-func (s Server) ReadJson(r *http.Request, outPtr interface{}) error {
+func (s *Server) ReadJson(r *http.Request, outPtr interface{}) error {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return err
@@ -241,7 +243,7 @@ func (s Server) ReadJson(r *http.Request, outPtr interface{}) error {
 	return err
 }
 
-func (s Server) HandleMetric() http.HandlerFunc {
+func (s *Server) HandleMetric() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		currentMetric := s.Metric.GetCurrentMetric()
 		sort.Sort(metric.SortByAveDur(currentMetric))
